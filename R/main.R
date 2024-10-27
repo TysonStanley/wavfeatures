@@ -110,7 +110,7 @@ detect_syllables <- function(wav_file,
 
   # Create temporary script file
   script_path <- tempfile(fileext = ".praat")
-  script_content <- system.file("praat", "syllable_nuclei.praat", package = "praatsyllable")
+  script_content <- system.file("praat", "syllable-nuclei.praat", package = "wavfeatures")
   file.copy(script_content, script_path)
 
   # Get directory and filename
@@ -141,11 +141,7 @@ detect_syllables <- function(wav_file,
   unlink(script_path)
 
   # Return path to generated TextGrid
-  textgrid_path <- fs::path(wav_dir, str_replace(wav_name, "\\.wav$", ".syllables.TextGrid"))
-  if (!file.exists(textgrid_path)) {
-    stop("TextGrid file not generated: ", textgrid_path)
-  }
-
+  textgrid_path <- fs::path(dirname(chs), str_replace(basename(chs[[1]]), "\\.wav$", ".syllables.TextGrid"))
   return(textgrid_path)
 }
 
