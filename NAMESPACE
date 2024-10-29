@@ -2,6 +2,9 @@
 
 export(detect_syllables)
 export(get_syllable_count)
+export(split_channels)
 import(fs)
 import(stringr)
+import(tuneR)
 import(utils)
+importFrom(stringr,str_replace)

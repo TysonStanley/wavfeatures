@@ -1,3 +1,5 @@
 ^wavfeatures\.Rproj$
 ^\.Rproj\.user$
 ^README\.Rmd$
+wav$
+dev$
