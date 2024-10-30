@@ -2,7 +2,7 @@
 % Please edit documentation in R/main.R
 \name{get_syllable_count}
 \alias{get_syllable_count}
-\title{Read syllable count from TextGrid}
+\title{Calculate speaking turn length}
 \usage{
 get_syllable_count(textgrid_path)
 }
@@ -13,5 +13,5 @@ get_syllable_count(textgrid_path)
 Number of syllables detected
 }
 \description{
-Read syllable count from TextGrid
+Calculate speaking turn length
 }

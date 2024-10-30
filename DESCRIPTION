@@ -8,7 +8,9 @@ Description: Provides functions to extract features for wav files, starting
 Imports:
     fs, 
     stringr,
-    tuneR
+    wav2textgrid,
+    dplyr,
+    readtextgrid
 Suggests:
   testthat
 License: GPL (>= 3)

@@ -1,58 +1,10 @@
-#' @title Split Channels
-#'
-#' @description Splits the wav file into the two channels
-#'
-#' @param wav_file The path to the wav file
-#' @param noise_reduction whether the praat noise reduction script should be run before getting boundaries, default = FALSE
-#' @param threshold noise level for removal
-#' @param plot should the tuneR::plot() be made for each channel? Default is FALSE.
-#'
-#' @import tuneR
-#' @importFrom stringr str_replace
-#'
+#' @importFrom wav2textgrid split_channels
 #' @export
-split_channels <- function(wav_file, noise_reduction = FALSE, threshold = 200, plot = FALSE){
-  # read in wave file
-  wav <- tuneR::readWave(wav_file)
-  wav <- tuneR::normalize(wav, unit = "16")
-  # check if it has two channels
-  if (tuneR::nchannel(wav) != 2) stop ("wave file needs to have 2 channels")
+wav2textgrid::split_channels
 
-  # file names
-  ch1 <- stringr::str_replace(wav_file, "\\.wav$", "_ch1.wav")
-  ch2 <- stringr::str_replace(wav_file, "\\.wav$", "_ch2.wav")
-
-  # split into left and right
-  left <- tuneR::channel(wav, which = "left")
-  right <- tuneR::channel(wav, which = "right")
-
-  # save channeled wav files
-  tuneR::writeWave(left, ch1)
-  tuneR::writeWave(right, ch2)
-
-  if (plot) tuneR::plot(left); if (plot) tuneR::plot(right)
-
-  # delete tmp folder if already exists
-  if (fs::dir_exists(file.path(fs::path_dir(wav_file), "tmp")))
-    fs::dir_delete(file.path(fs::path_dir(wav_file), "tmp"))
-
-  # move files to tmp folder
-  fs::dir_create(file.path(fs::path_dir(wav_file), "tmp"))
-  file1 = fs::path_file(ch1)
-  file2 = fs::path_file(ch2)
-  fs::file_move(ch1, file.path(fs::path_dir(ch1), "tmp"))
-  fs::file_move(ch2, file.path(fs::path_dir(ch2), "tmp"))
-
-  # new locations
-  ch1 = file.path(fs::path_dir(ch1), "tmp", file1)
-  ch2 = file.path(fs::path_dir(ch2), "tmp", file2)
-
-  # check that files exist
-  if (! fs::file_exists(ch1) | ! fs::file_exists(ch2)) stop("error creating channels")
-
-  # return names
-  return(c(ch1, ch2))
-}
+#' @importFrom wav2textgrid get_boundaries
+#' @export
+wav2textgrid::get_boundaries
 
 
 # Define package structure
@@ -118,7 +70,7 @@ detect_syllables <- function(wav_file,
   wav_name <- basename(wav_file)
 
   # split channels
-  chs <- split_channels(wav_file)
+  chs <- wav2textgrid::split_channels(wav_file)
   fs::dir_create(file.path(wav_dir, "tmp"))
   fs::file_move(chs[[1]], file.path(wav_dir, "tmp"))
   fs::file_move(chs[[2]], file.path(wav_dir, "tmp"))
@@ -145,7 +97,7 @@ detect_syllables <- function(wav_file,
   return(textgrid_path)
 }
 
-#' Read syllable count from TextGrid
+#' Calculate speaking turn length
 #'
 #' @param textgrid_path Path to TextGrid file
 #' @return Number of syllables detected
@@ -159,7 +111,7 @@ get_syllable_count <- function(textgrid_path) {
   lines <- readLines(textgrid_path)
 
   # Find points in the syllables tier
-  point_lines <- grep("points \\[\\d+\\]:", lines)
+  point_lines <- grep("points: size = ", lines)
   if (length(point_lines) == 0) {
     return(0)
   }
@@ -169,4 +121,91 @@ get_syllable_count <- function(textgrid_path) {
   points <- as.numeric(str_extract(points_str, "\\d+"))
 
   return(points)
+}
+
+#' Get Speaking Turn Lengths
+#'
+#' @param wav_file Path to input WAV file
+#' @param min_pitch Minimum pitch (Hz)
+#' @param time_step Time step (s)
+#' @param threshold silence threshold, default is -45
+#' @param min_silent_int Minimum silent interval (s)
+#' @param min_sound_int Minimum sounding interval (s)
+#'
+#' @importFrom wav2textgrid get_boundaries
+#' @importFrom dplyr filter
+#' @importFrom readtextgrid read_textgrid
+#'
+#' @return Turn lengths
+#' @export
+get_turn_duration <- function(wav_file, min_pitch = 100, time_step = 0.0, threshold = -45, min_silent_int = 0.5, min_sound_int = 0.1) {
+  if (!file.exists(wav_file)) stop("wav file not found: ", wav_file)
+
+  # folder to place textgrid
+  folder = fs::path_dir(wav_file)
+
+  # create textgrid of sounding/silences
+  wav2textgrid::get_boundaries(file.path(folder, ""), min_pitch, time_step, threshold, min_silent_int, min_sound_int)
+
+  # Read TextGrid file
+  silences = readtextgrid::read_textgrid(fs::dir_ls(folder, regexp = "ch1.wav_silences"))
+
+  # calc total speaking turn lengths
+  silences$turn_length = silences$xmax - silences$xmin
+  silences = dplyr::filter(silences, text == "sounding")
+  return(sum(silences$turn_length))
+}
+
+
+#' Get Syllables Per Second
+#'
+#' @param wav_file Path to input WAV file
+#' @param ignorance_level Ignorance level/Intensity median (dB). Default 0 for unfiltered sounds, 2 for filtered
+#' @param min_dip Minimum dip between peaks (dB). Default 2 for unfiltered sounds, 4 for filtered
+#' @param praat_path Optional path to Praat executable
+#' @param min_pitch Minimum pitch (Hz)
+#' @param time_step Time step (s)
+#' @param threshold silence threshold, default is -45
+#' @param min_silent_int Minimum silent interval (s)
+#' @param min_sound_int Minimum sounding interval (s)
+#' @param keep_intermediates Keep the tmp folder with the textgrids? TRUE is kept, FALSE deletes the intermediate files
+#'
+#' @importFrom wav2textgrid get_boundaries
+#' @importFrom dplyr filter
+#' @importFrom readtextgrid read_textgrid
+#'
+#' @return Turn lengths
+#' @export
+get_syllables_ps <- function(
+    wav_file, ignorance_level = 0, min_dip = 2, min_pitch = 100,
+    time_step = 0.0, threshold = -45, min_silent_int = 0.5, min_sound_int = 0.1,
+    praat_path = NULL, keep_intermediates = FALSE
+  ){
+
+  # step 1: textgrid syllables counts
+  textgrid_path <- detect_syllables(wav_file, ignorance_level, min_dip, praat_path)
+
+  # folder where tmp files live
+  folder = dirname(textgrid_path[[1]])
+
+  # step 2: calculate total syllables
+  syll_count <- vector("list", length = length(textgrid_path))
+  for (i in seq_along(textgrid_path)){
+    syll_count[[i]] <- get_syllable_count(textgrid_path[[i]])
+  }
+
+  # step 3: calculate speaking duration
+  wav_file <- fs::dir_ls(folder, regexp = "wav$")
+  turn_length <- vector("list", length = length(syll_count))
+  for (i in seq_along(syll_count)){
+    turn_length[[i]] <- get_turn_duration(wav_file[[i]], min_pitch, time_step, threshold, min_silent_int, min_sound_int)
+  }
+
+  # clean up
+  if (! keep_intermediates) fs::dir_delete(folder)
+
+  # calculate and return
+  final <- data.frame(count = unlist(syll_count), length = unlist(turn_length))
+  final$syll_ps <- final$count/final$length
+  return(final)
 }
